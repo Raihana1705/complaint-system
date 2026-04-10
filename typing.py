@@ -1,80 +1,29 @@
-import typing as t
+"""For neatly implementing static typing in pip.
 
-if t.TYPE_CHECKING:  # pragma: no cover
-    from _typeshed.wsgi import WSGIApplication  # noqa: F401
-    from werkzeug.datastructures import Headers  # noqa: F401
-    from werkzeug.wrappers import Response  # noqa: F401
+`mypy` - the static type analysis tool we use - uses the `typing` module, which
+provides core functionality fundamental to mypy's functioning.
 
-# The possible types that are directly convertible or are a Response object.
-ResponseValue = t.Union[
-    "Response",
-    str,
-    bytes,
-    t.List[t.Any],
-    # Only dict is actually accepted, but Mapping allows for TypedDict.
-    t.Mapping[str, t.Any],
-    t.Iterator[str],
-    t.Iterator[bytes],
-]
+Generally, `typing` would be imported at runtime and used in that fashion -
+it acts as a no-op at runtime and does not have any run-time overhead by
+design.
 
-# the possible types for an individual HTTP header
-# This should be a Union, but mypy doesn't pass unless it's a TypeVar.
-HeaderValue = t.Union[str, t.List[str], t.Tuple[str, ...]]
+As it turns out, `typing` is not vendorable - it uses separate sources for
+Python 2/Python 3. Thus, this codebase can not expect it to be present.
+To work around this, mypy allows the typing import to be behind a False-y
+optional to prevent it from running at runtime and type-comments can be used
+to remove the need for the types to be accessible directly during runtime.
 
-# the possible types for HTTP headers
-HeadersValue = t.Union[
-    "Headers",
-    t.Mapping[str, HeaderValue],
-    t.Sequence[t.Tuple[str, HeaderValue]],
-]
+This module provides the False-y guard in a nicely named fashion so that a
+curious maintainer can reach here to read this.
 
-# The possible types returned by a route function.
-ResponseReturnValue = t.Union[
-    ResponseValue,
-    t.Tuple[ResponseValue, HeadersValue],
-    t.Tuple[ResponseValue, int],
-    t.Tuple[ResponseValue, int, HeadersValue],
-    "WSGIApplication",
-]
+In pip, all static-typing related imports should be guarded as follows:
 
-# Allow any subclass of werkzeug.Response, such as the one from Flask,
-# as a callback argument. Using werkzeug.Response directly makes a
-# callback annotated with flask.Response fail type checking.
-ResponseClass = t.TypeVar("ResponseClass", bound="Response")
+    from pip._internal.utils.typing import MYPY_CHECK_RUNNING
 
-AppOrBlueprintKey = t.Optional[str]  # The App key is None, whereas blueprints are named
-AfterRequestCallable = t.Union[
-    t.Callable[[ResponseClass], ResponseClass],
-    t.Callable[[ResponseClass], t.Awaitable[ResponseClass]],
-]
-BeforeFirstRequestCallable = t.Union[
-    t.Callable[[], None], t.Callable[[], t.Awaitable[None]]
-]
-BeforeRequestCallable = t.Union[
-    t.Callable[[], t.Optional[ResponseReturnValue]],
-    t.Callable[[], t.Awaitable[t.Optional[ResponseReturnValue]]],
-]
-ShellContextProcessorCallable = t.Callable[[], t.Dict[str, t.Any]]
-TeardownCallable = t.Union[
-    t.Callable[[t.Optional[BaseException]], None],
-    t.Callable[[t.Optional[BaseException]], t.Awaitable[None]],
-]
-TemplateContextProcessorCallable = t.Callable[[], t.Dict[str, t.Any]]
-TemplateFilterCallable = t.Callable[..., t.Any]
-TemplateGlobalCallable = t.Callable[..., t.Any]
-TemplateTestCallable = t.Callable[..., bool]
-URLDefaultCallable = t.Callable[[str, dict], None]
-URLValuePreprocessorCallable = t.Callable[[t.Optional[str], t.Optional[dict]], None]
+    if MYPY_CHECK_RUNNING:
+        from typing import ...  # noqa: F401
 
-# This should take Exception, but that either breaks typing the argument
-# with a specific exception, or decorating multiple times with different
-# exceptions (and using a union type on the argument).
-# https://github.com/pallets/flask/issues/4095
-# https://github.com/pallets/flask/issues/4295
-# https://github.com/pallets/flask/issues/4297
-ErrorHandlerCallable = t.Callable[[t.Any], ResponseReturnValue]
+Ref: https://github.com/python/mypy/issues/3216
+"""
 
-RouteCallable = t.Union[
-    t.Callable[..., ResponseReturnValue],
-    t.Callable[..., t.Awaitable[ResponseReturnValue]],
-]
+MYPY_CHECK_RUNNING = False

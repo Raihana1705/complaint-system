@@ -1,157 +1,195 @@
+# Natural Language Toolkit: Classifier Interface
+#
+# Copyright (C) 2001-2023 NLTK Project
+# Author: Edward Loper <edloper@gmail.com>
+#         Steven Bird <stevenbird1@gmail.com> (minor additions)
+# URL: <https://www.nltk.org/>
+# For license information, see LICENSE.TXT
+
 """
-requests.api
-~~~~~~~~~~~~
+Interfaces for labeling tokens with category labels (or "class labels").
 
-This module implements the Requests API.
+``ClassifierI`` is a standard interface for "single-category
+classification", in which the set of categories is known, the number
+of categories is finite, and each text belongs to exactly one
+category.
 
-:copyright: (c) 2012 by Kenneth Reitz.
-:license: Apache2, see LICENSE for more details.
+``MultiClassifierI`` is a standard interface for "multi-category
+classification", which is like single-category classification except
+that each text belongs to zero or more categories.
 """
+from nltk.internals import overridden
 
-from . import sessions
+##//////////////////////////////////////////////////////
+# { Classification Interfaces
+##//////////////////////////////////////////////////////
 
 
-def request(method, url, **kwargs):
-    """Constructs and sends a :class:`Request <Request>`.
+class ClassifierI:
+    """
+    A processing interface for labeling tokens with a single category
+    label (or "class").  Labels are typically strs or
+    ints, but can be any immutable type.  The set of labels
+    that the classifier chooses from must be fixed and finite.
 
-    :param method: method for the new :class:`Request` object: ``GET``, ``OPTIONS``, ``HEAD``, ``POST``, ``PUT``, ``PATCH``, or ``DELETE``.
-    :param url: URL for the new :class:`Request` object.
-    :param params: (optional) Dictionary, list of tuples or bytes to send
-        in the query string for the :class:`Request`.
-    :param data: (optional) Dictionary, list of tuples, bytes, or file-like
-        object to send in the body of the :class:`Request`.
-    :param json: (optional) A JSON serializable Python object to send in the body of the :class:`Request`.
-    :param headers: (optional) Dictionary of HTTP Headers to send with the :class:`Request`.
-    :param cookies: (optional) Dict or CookieJar object to send with the :class:`Request`.
-    :param files: (optional) Dictionary of ``'name': file-like-objects`` (or ``{'name': file-tuple}``) for multipart encoding upload.
-        ``file-tuple`` can be a 2-tuple ``('filename', fileobj)``, 3-tuple ``('filename', fileobj, 'content_type')``
-        or a 4-tuple ``('filename', fileobj, 'content_type', custom_headers)``, where ``'content-type'`` is a string
-        defining the content type of the given file and ``custom_headers`` a dict-like object containing additional headers
-        to add for the file.
-    :param auth: (optional) Auth tuple to enable Basic/Digest/Custom HTTP Auth.
-    :param timeout: (optional) How many seconds to wait for the server to send data
-        before giving up, as a float, or a :ref:`(connect timeout, read
-        timeout) <timeouts>` tuple.
-    :type timeout: float or tuple
-    :param allow_redirects: (optional) Boolean. Enable/disable GET/OPTIONS/POST/PUT/PATCH/DELETE/HEAD redirection. Defaults to ``True``.
-    :type allow_redirects: bool
-    :param proxies: (optional) Dictionary mapping protocol to the URL of the proxy.
-    :param verify: (optional) Either a boolean, in which case it controls whether we verify
-            the server's TLS certificate, or a string, in which case it must be a path
-            to a CA bundle to use. Defaults to ``True``.
-    :param stream: (optional) if ``False``, the response content will be immediately downloaded.
-    :param cert: (optional) if String, path to ssl client cert file (.pem). If Tuple, ('cert', 'key') pair.
-    :return: :class:`Response <Response>` object
-    :rtype: requests.Response
+    Subclasses must define:
+      - ``labels()``
+      - either ``classify()`` or ``classify_many()`` (or both)
 
-    Usage::
-
-      >>> import requests
-      >>> req = requests.request('GET', 'https://httpbin.org/get')
-      >>> req
-      <Response [200]>
+    Subclasses may define:
+      - either ``prob_classify()`` or ``prob_classify_many()`` (or both)
     """
 
-    # By using the 'with' statement we are sure the session is closed, thus we
-    # avoid leaving sockets open which can trigger a ResourceWarning in some
-    # cases, and look like a memory leak in others.
-    with sessions.Session() as session:
-        return session.request(method=method, url=url, **kwargs)
+    def labels(self):
+        """
+        :return: the list of category labels used by this classifier.
+        :rtype: list of (immutable)
+        """
+        raise NotImplementedError()
+
+    def classify(self, featureset):
+        """
+        :return: the most appropriate label for the given featureset.
+        :rtype: label
+        """
+        if overridden(self.classify_many):
+            return self.classify_many([featureset])[0]
+        else:
+            raise NotImplementedError()
+
+    def prob_classify(self, featureset):
+        """
+        :return: a probability distribution over labels for the given
+            featureset.
+        :rtype: ProbDistI
+        """
+        if overridden(self.prob_classify_many):
+            return self.prob_classify_many([featureset])[0]
+        else:
+            raise NotImplementedError()
+
+    def classify_many(self, featuresets):
+        """
+        Apply ``self.classify()`` to each element of ``featuresets``.  I.e.:
+
+            return [self.classify(fs) for fs in featuresets]
+
+        :rtype: list(label)
+        """
+        return [self.classify(fs) for fs in featuresets]
+
+    def prob_classify_many(self, featuresets):
+        """
+        Apply ``self.prob_classify()`` to each element of ``featuresets``.  I.e.:
+
+            return [self.prob_classify(fs) for fs in featuresets]
+
+        :rtype: list(ProbDistI)
+        """
+        return [self.prob_classify(fs) for fs in featuresets]
 
 
-def get(url, params=None, **kwargs):
-    r"""Sends a GET request.
+class MultiClassifierI:
+    """
+    A processing interface for labeling tokens with zero or more
+    category labels (or "labels").  Labels are typically strs
+    or ints, but can be any immutable type.  The set of labels
+    that the multi-classifier chooses from must be fixed and finite.
 
-    :param url: URL for the new :class:`Request` object.
-    :param params: (optional) Dictionary, list of tuples or bytes to send
-        in the query string for the :class:`Request`.
-    :param \*\*kwargs: Optional arguments that ``request`` takes.
-    :return: :class:`Response <Response>` object
-    :rtype: requests.Response
+    Subclasses must define:
+      - ``labels()``
+      - either ``classify()`` or ``classify_many()`` (or both)
+
+    Subclasses may define:
+      - either ``prob_classify()`` or ``prob_classify_many()`` (or both)
     """
 
-    return request("get", url, params=params, **kwargs)
+    def labels(self):
+        """
+        :return: the list of category labels used by this classifier.
+        :rtype: list of (immutable)
+        """
+        raise NotImplementedError()
+
+    def classify(self, featureset):
+        """
+        :return: the most appropriate set of labels for the given featureset.
+        :rtype: set(label)
+        """
+        if overridden(self.classify_many):
+            return self.classify_many([featureset])[0]
+        else:
+            raise NotImplementedError()
+
+    def prob_classify(self, featureset):
+        """
+        :return: a probability distribution over sets of labels for the
+            given featureset.
+        :rtype: ProbDistI
+        """
+        if overridden(self.prob_classify_many):
+            return self.prob_classify_many([featureset])[0]
+        else:
+            raise NotImplementedError()
+
+    def classify_many(self, featuresets):
+        """
+        Apply ``self.classify()`` to each element of ``featuresets``.  I.e.:
+
+            return [self.classify(fs) for fs in featuresets]
+
+        :rtype: list(set(label))
+        """
+        return [self.classify(fs) for fs in featuresets]
+
+    def prob_classify_many(self, featuresets):
+        """
+        Apply ``self.prob_classify()`` to each element of ``featuresets``.  I.e.:
+
+            return [self.prob_classify(fs) for fs in featuresets]
+
+        :rtype: list(ProbDistI)
+        """
+        return [self.prob_classify(fs) for fs in featuresets]
 
 
-def options(url, **kwargs):
-    r"""Sends an OPTIONS request.
+# # [XX] IN PROGRESS:
+# class SequenceClassifierI:
+#     """
+#     A processing interface for labeling sequences of tokens with a
+#     single category label (or "class").  Labels are typically
+#     strs or ints, but can be any immutable type.  The set
+#     of labels that the classifier chooses from must be fixed and
+#     finite.
+#     """
+#     def labels(self):
+#         """
+#         :return: the list of category labels used by this classifier.
+#         :rtype: list of (immutable)
+#         """
+#         raise NotImplementedError()
 
-    :param url: URL for the new :class:`Request` object.
-    :param \*\*kwargs: Optional arguments that ``request`` takes.
-    :return: :class:`Response <Response>` object
-    :rtype: requests.Response
-    """
+#     def prob_classify(self, featureset):
+#         """
+#         Return a probability distribution over labels for the given
+#         featureset.
 
-    return request("options", url, **kwargs)
+#         If ``featureset`` is a list of featuresets, then return a
+#         corresponding list containing the probability distribution
+#         over labels for each of the given featuresets, where the
+#         *i*\ th element of this list is the most appropriate label for
+#         the *i*\ th element of ``featuresets``.
+#         """
+#         raise NotImplementedError()
 
+#     def classify(self, featureset):
+#         """
+#         Return the most appropriate label for the given featureset.
 
-def head(url, **kwargs):
-    r"""Sends a HEAD request.
-
-    :param url: URL for the new :class:`Request` object.
-    :param \*\*kwargs: Optional arguments that ``request`` takes. If
-        `allow_redirects` is not provided, it will be set to `False` (as
-        opposed to the default :meth:`request` behavior).
-    :return: :class:`Response <Response>` object
-    :rtype: requests.Response
-    """
-
-    kwargs.setdefault("allow_redirects", False)
-    return request("head", url, **kwargs)
-
-
-def post(url, data=None, json=None, **kwargs):
-    r"""Sends a POST request.
-
-    :param url: URL for the new :class:`Request` object.
-    :param data: (optional) Dictionary, list of tuples, bytes, or file-like
-        object to send in the body of the :class:`Request`.
-    :param json: (optional) A JSON serializable Python object to send in the body of the :class:`Request`.
-    :param \*\*kwargs: Optional arguments that ``request`` takes.
-    :return: :class:`Response <Response>` object
-    :rtype: requests.Response
-    """
-
-    return request("post", url, data=data, json=json, **kwargs)
-
-
-def put(url, data=None, **kwargs):
-    r"""Sends a PUT request.
-
-    :param url: URL for the new :class:`Request` object.
-    :param data: (optional) Dictionary, list of tuples, bytes, or file-like
-        object to send in the body of the :class:`Request`.
-    :param json: (optional) A JSON serializable Python object to send in the body of the :class:`Request`.
-    :param \*\*kwargs: Optional arguments that ``request`` takes.
-    :return: :class:`Response <Response>` object
-    :rtype: requests.Response
-    """
-
-    return request("put", url, data=data, **kwargs)
-
-
-def patch(url, data=None, **kwargs):
-    r"""Sends a PATCH request.
-
-    :param url: URL for the new :class:`Request` object.
-    :param data: (optional) Dictionary, list of tuples, bytes, or file-like
-        object to send in the body of the :class:`Request`.
-    :param json: (optional) A JSON serializable Python object to send in the body of the :class:`Request`.
-    :param \*\*kwargs: Optional arguments that ``request`` takes.
-    :return: :class:`Response <Response>` object
-    :rtype: requests.Response
-    """
-
-    return request("patch", url, data=data, **kwargs)
-
-
-def delete(url, **kwargs):
-    r"""Sends a DELETE request.
-
-    :param url: URL for the new :class:`Request` object.
-    :param \*\*kwargs: Optional arguments that ``request`` takes.
-    :return: :class:`Response <Response>` object
-    :rtype: requests.Response
-    """
-
-    return request("delete", url, **kwargs)
+#         If ``featureset`` is a list of featuresets, then return a
+#         corresponding list containing the most appropriate label for
+#         each of the given featuresets, where the *i*\ th element of
+#         this list is the most appropriate label for the *i*\ th element
+#         of ``featuresets``.
+#         """
+#         raise NotImplementedError()
